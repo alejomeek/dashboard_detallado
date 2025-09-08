@@ -188,11 +188,11 @@ else:
         # --- BARRA LATERAL DE FILTROS ---
         st.sidebar.header("Filtros Interactivos")
 
-        # --- MODIFICACIÓN 1: El filtro de fecha ahora es por mes ---
+        # --- MODIFICACIÓN 2: Usar un slider de rango para seleccionar fechas ---
         st.sidebar.markdown("##### Seleccionar Rango de Meses")
         available_periods = sorted(df['Periodo'].unique())
 
-        # Lógica para fechas por defecto (intentar con 2024)
+        # Lógica para fechas por defecto (intentar con 2024 o el último año disponible)
         default_start_period = '2024-01'
         default_end_period = '2024-12'
         
@@ -200,33 +200,21 @@ else:
         if default_start_period not in available_periods:
             default_start_period = available_periods[0]
         if default_end_period not in available_periods:
-            default_end_period = available_periods[-1]
+            # Si 2024-12 no está, usar el último periodo disponible
+            if '2024' in available_periods[-1]:
+                 default_end_period = available_periods[-1]
+            else:
+                 # Si el año 2024 no existe, buscar el último mes del año más reciente
+                 last_year = available_periods[-1][:4]
+                 last_year_periods = [p for p in available_periods if p.startswith(last_year)]
+                 default_end_period = last_year_periods[-1]
 
-        # Obtener los índices para los valores por defecto
-        try:
-            start_index = available_periods.index(default_start_period)
-        except ValueError:
-            start_index = 0
-        try:
-            end_index = available_periods.index(default_end_period)
-        except ValueError:
-            end_index = len(available_periods) - 1
 
-        selected_start_period = st.sidebar.selectbox(
-            "Mes de Inicio",
+        selected_start_period, selected_end_period = st.sidebar.select_slider(
+            "Rango de Meses",
             options=available_periods,
-            index=start_index
+            value=(default_start_period, default_end_period)
         )
-        selected_end_period = st.sidebar.selectbox(
-            "Mes de Fin",
-            options=available_periods,
-            index=end_index
-        )
-
-        # Validar que el periodo de inicio no sea posterior al de fin
-        if selected_start_period > selected_end_period:
-            st.sidebar.warning("El mes de inicio no puede ser posterior al de fin. Se ajustará al mes de inicio.")
-            selected_end_period = selected_start_period
         
         # Filtrar por fecha primero para que los otros filtros se actualicen
         df_by_date = df[(df['Periodo'] >= selected_start_period) & (df['Periodo'] <= selected_end_period)]
@@ -286,7 +274,6 @@ else:
             (df['Grupo'].isin(selected_grupos)) &
             (df['Marca'].isin(selected_marcas)) &
             (df['Tipo_Proveedor'].isin(selected_proveedores)) &
-            # --- MODIFICACIÓN 1: Usar los periodos seleccionados para filtrar ---
             (df['Periodo'] >= selected_start_period) &
             (df['Periodo'] <= selected_end_period)
         ]
@@ -309,7 +296,6 @@ else:
 
             # --- KPIs con Comparativo Anual ---
             
-            # --- MODIFICACIÓN 1: Adaptar cálculo del periodo anterior a los meses ---
             start_date_obj = pd.to_datetime(selected_start_period)
             end_date_obj = pd.to_datetime(selected_end_period)
             
@@ -391,7 +377,6 @@ else:
                 st.metric(label="Costo Promedio x Un", value=f"${costo_unitario_curr:,.0f}", delta=create_delta_text(costo_unitario_curr, costo_unitario_prev))
 
             if not df_previous.empty:
-                # --- MODIFICACIÓN 1: Actualizar el texto de la leyenda de comparación ---
                 st.caption(f"Comparando con el periodo: {prev_start_period} al {prev_end_period}")
 
             # --- GRÁFICO DE CASCADA (P&G) CON NUEVOS COLORES Y TEXTO ---
@@ -850,3 +835,4 @@ else:
         st.error("No se pudo cargar el archivo. Revisa el mensaje de error en la parte superior.")
     else: # df is empty after cleaning
         st.error("No se encontraron datos válidos en el archivo cargado después de la limpieza.")
+
