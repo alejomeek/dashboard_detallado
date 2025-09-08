@@ -411,7 +411,8 @@ else:
 
             with col_graf1:
                 st.markdown("##### Evolución Mensual")
-                df_time_series = df_filtered.set_index('Fecha').groupby(pd.Grouper(freq='M')).agg(
+                # --- MODIFICACIÓN 3: Cambiar la frecuencia de 'M' a 'MS' (Month Start) ---
+                df_time_series = df_filtered.set_index('Fecha').groupby(pd.Grouper(freq='MS')).agg(
                     {'Venta Neta': 'sum', 'Utilidad Bruta': 'sum'}
                 ).reset_index()
                 df_time_series['Margen Bruto'] = (df_time_series['Utilidad Bruta'] / df_time_series['Venta Neta']) * 100
