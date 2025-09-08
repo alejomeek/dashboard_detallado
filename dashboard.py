@@ -188,33 +188,48 @@ else:
         # --- BARRA LATERAL DE FILTROS ---
         st.sidebar.header("Filtros Interactivos")
 
-        # --- El filtro de fecha ahora es el primero ---
-        st.sidebar.markdown("##### Seleccionar Rango de Fechas")
-        min_date = df['Fecha'].min().date()
-        max_date = df['Fecha'].max().date()
+        # --- MODIFICACIÓN 1: El filtro de fecha ahora es por mes ---
+        st.sidebar.markdown("##### Seleccionar Rango de Meses")
+        available_periods = sorted(df['Periodo'].unique())
+
+        # Lógica para fechas por defecto (intentar con 2024)
+        default_start_period = '2024-01'
+        default_end_period = '2024-12'
         
-        # Fecha inicial por defecto es 2024
-        default_start_date = datetime.date(2024, 1, 1)
-        default_end_date = datetime.date(2024, 12, 31)
+        # Asegurarse de que los defaults estén en la lista de periodos disponibles
+        if default_start_period not in available_periods:
+            default_start_period = available_periods[0]
+        if default_end_period not in available_periods:
+            default_end_period = available_periods[-1]
 
-        # Asegurarse de que el default no esté fuera de los límites de los datos
-        if default_start_date < min_date:
-            default_start_date = min_date
-        if default_end_date > max_date:
-            default_end_date = max_date
+        # Obtener los índices para los valores por defecto
+        try:
+            start_index = available_periods.index(default_start_period)
+        except ValueError:
+            start_index = 0
+        try:
+            end_index = available_periods.index(default_end_period)
+        except ValueError:
+            end_index = len(available_periods) - 1
 
-        selected_date_range = st.sidebar.date_input(
-            "Rango de Fechas", value=(default_start_date, default_end_date),
-            min_value=min_date, max_value=max_date, format="YYYY-MM-DD"
+        selected_start_period = st.sidebar.selectbox(
+            "Mes de Inicio",
+            options=available_periods,
+            index=start_index
+        )
+        selected_end_period = st.sidebar.selectbox(
+            "Mes de Fin",
+            options=available_periods,
+            index=end_index
         )
 
+        # Validar que el periodo de inicio no sea posterior al de fin
+        if selected_start_period > selected_end_period:
+            st.sidebar.warning("El mes de inicio no puede ser posterior al de fin. Se ajustará al mes de inicio.")
+            selected_end_period = selected_start_period
+        
         # Filtrar por fecha primero para que los otros filtros se actualicen
-        if len(selected_date_range) == 2:
-            start_date = pd.to_datetime(selected_date_range[0])
-            end_date = pd.to_datetime(selected_date_range[1])
-            df_by_date = df[(df['Fecha'] >= start_date) & (df['Fecha'] <= end_date)]
-        else:
-            df_by_date = df.copy() # Si no hay rango válido, usar todos los datos
+        df_by_date = df[(df['Periodo'] >= selected_start_period) & (df['Periodo'] <= selected_end_period)]
         
         # --- Lógica para filtros en cascada ---
         
@@ -266,14 +281,14 @@ else:
 
 
         # --- APLICACIÓN DE FILTROS AL DATAFRAME ---
-        # El filtrado final se hace sobre el dataframe original para asegurar la integridad
         df_filtered = df[
             (df['Sucursal'].isin(selected_sucursales)) &
             (df['Grupo'].isin(selected_grupos)) &
             (df['Marca'].isin(selected_marcas)) &
             (df['Tipo_Proveedor'].isin(selected_proveedores)) &
-            (df['Fecha'] >= start_date) &
-            (df['Fecha'] <= end_date)
+            # --- MODIFICACIÓN 1: Usar los periodos seleccionados para filtrar ---
+            (df['Periodo'] >= selected_start_period) &
+            (df['Periodo'] <= selected_end_period)
         ]
         
         # Aplicar filtro de SKU si el usuario ingresó algo
@@ -294,9 +309,15 @@ else:
 
             # --- KPIs con Comparativo Anual ---
             
-            # Calcular periodo anterior y filtrar
-            prev_start_date = start_date - pd.DateOffset(years=1)
-            prev_end_date = end_date - pd.DateOffset(years=1)
+            # --- MODIFICACIÓN 1: Adaptar cálculo del periodo anterior a los meses ---
+            start_date_obj = pd.to_datetime(selected_start_period)
+            end_date_obj = pd.to_datetime(selected_end_period)
+            
+            prev_start_date_obj = start_date_obj - pd.DateOffset(years=1)
+            prev_end_date_obj = end_date_obj - pd.DateOffset(years=1)
+
+            prev_start_period = prev_start_date_obj.strftime('%Y-%m')
+            prev_end_period = prev_end_date_obj.strftime('%Y-%m')
             
             # Usar los mismos filtros categóricos para la comparación
             base_filters = (
@@ -312,7 +333,8 @@ else:
                 if skus_to_filter:
                     base_filters = base_filters & (df['CodPro'].isin(skus_to_filter))
 
-            df_previous = df[base_filters & (df['Fecha'] >= prev_start_date) & (df['Fecha'] <= prev_end_date)]
+            # Filtrar el DF del año anterior usando los periodos calculados
+            df_previous = df[base_filters & (df['Periodo'] >= prev_start_period) & (df['Periodo'] <= prev_end_period)]
 
             # Función para calcular métricas de un dataframe
             def get_metrics(dataf):
@@ -369,7 +391,8 @@ else:
                 st.metric(label="Costo Promedio x Un", value=f"${costo_unitario_curr:,.0f}", delta=create_delta_text(costo_unitario_curr, costo_unitario_prev))
 
             if not df_previous.empty:
-                st.caption(f"Comparando con el periodo: {prev_start_date.strftime('%Y-%m-%d')} al {prev_end_date.strftime('%Y-%m-%d')}")
+                # --- MODIFICACIÓN 1: Actualizar el texto de la leyenda de comparación ---
+                st.caption(f"Comparando con el periodo: {prev_start_period} al {prev_end_period}")
 
             # --- GRÁFICO DE CASCADA (P&G) CON NUEVOS COLORES Y TEXTO ---
             st.markdown("##### Desglose de la Utilidad Bruta (P&G)")
@@ -385,7 +408,7 @@ else:
                 connector = {"line":{"color":"rgb(63, 63, 63)"}},
                 decreasing = {"marker":{"color":"#5E88FC"}}, # Azul medio para costos
                 increasing = {"marker":{"color":"#1C3FAA"}}, # Azul oscuro para ventas
-                totals = {"marker":{"color":"#00227A"}}     # Azul más oscuro para totales
+                totals = {"marker":{"color":"#00227A"}}      # Azul más oscuro para totales
             ))
 
             fig_waterfall.update_layout(
